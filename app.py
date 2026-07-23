@@ -37,11 +37,11 @@ if not st.session_state["logged_in"]:
                     else:
                         st.error("Kullanıcı adı veya şifre hatalı!")
                 except Exception as e:
-                    st.error("Secrets (Şifre) ayarları bulunamadı. Lütfen Streamlit Cloud 'Advanced Settings' menüsünü kontrol edin.")
+                    st.error("Secrets (Şifre) ayarları bulunamadı. Lütfen Streamlit Cloud ayarlarını kontrol edin.")
 else:
     # --- ANA UYGULAMA (GİRİŞ YAPILDIKTAN SONRA) ---
     try:
-        # Şablon Oluşturucu (Bulut için)
+        # Şablon Oluşturucu (Bulut için boş dosya yaratır)
         if not os.path.exists("veriler.xlsx"):
             with pd.ExcelWriter("veriler.xlsx", engine="openpyxl") as writer:
                 pd.DataFrame(columns=["Yıl", "Öğrenci Adı Soyadı", "Kayıt olunan Anabilim dalı", "Program", "Danışman Adı ve Soyadı", "Tez Adı", "Eserin Yayın Yılı", "Eserdeki Yazar Sayısı", "Eser Türü", "Eserin Indeksi", "Eserin Linki"]).to_excel(writer, sheet_name="Sheet1", index=False)
@@ -50,10 +50,20 @@ else:
 
         # Verileri Okuma
         df = pd.read_excel("veriler.xlsx", sheet_name=0)
+        
+        # Sütun başlıklarındaki gizli boşlukları ve İ/I hatalarını temizleme
+        df.rename(columns=lambda x: str(x).strip(), inplace=True)
+        if "Eserin İndeksi" in df.columns and "Eserin Indeksi" not in df.columns:
+            df.rename(columns={"Eserin İndeksi": "Eserin Indeksi"}, inplace=True)
+
         try: mailler_df = pd.read_excel("veriler.xlsx", sheet_name="Mailler")
         except: mailler_df = pd.DataFrame(columns=["Danışman Adı ve Soyadı", "E-Posta Adresi"])
+        
         try: kisisel_df = pd.read_excel("veriler.xlsx", sheet_name="Kişisel Performans")
         except: kisisel_df = pd.DataFrame(columns=["Danışman Adı ve Soyadı", "Eser Türü", "Eserin Indeksi", "Puan"])
+        kisisel_df.rename(columns=lambda x: str(x).strip(), inplace=True)
+        if "Eserin İndeksi" in kisisel_df.columns and "Eserin Indeksi" not in kisisel_df.columns:
+            kisisel_df.rename(columns={"Eserin İndeksi": "Eserin Indeksi"}, inplace=True)
 
         # YAN MENÜ TASARIMI
         st.sidebar.image("https://nevsehir.edu.tr/assets/images/logo.png", width=150)
@@ -69,16 +79,16 @@ else:
         # =========================================================================
         if menu == "💾 Veri Girişi ve Düzenleme":
             st.title("💾 Sistem Veri Yönetimi")
-            st.info("💡 **ÖNEMLİ BİLGİ:** Bulut sistemlerde veriler geçici sunucularda tutulur. Veri girişinizi tamamladıktan sonra mutlaka **'Güncel Verileri İndir'** butonuna basarak kopyanızı bilgisayarınıza kaydedin.")
+            st.info("💡 **ÖNEMLİ BİLGİ:** Bulutta çalışan bu sistem için, bilgisayarınızdaki dolu 'veriler.xlsx' dosyasını aşağıdaki **Veri Yükle** butonundan yüklemeniz gerekmektedir.")
             
             col_up, col_down = st.columns(2)
             with col_up:
                 st.subheader("📥 Veri Yükle (Excel'den)")
-                uploaded_file = st.file_uploader("Elinizdeki güncel 'veriler.xlsx' dosyasını sisteme yükleyin:", type=["xlsx"])
+                uploaded_file = st.file_uploader("Bilgisayarınızdaki güncel 'veriler.xlsx' dosyasını yükleyin:", type=["xlsx"])
                 if uploaded_file:
                     with open("veriler.xlsx", "wb") as f:
                         f.write(uploaded_file.getbuffer())
-                    st.success("✅ Yeni Excel başarıyla sisteme yüklendi!")
+                    st.success("✅ Yeni Excel başarıyla sisteme yüklendi! Lütfen Performans Paneline geçin.")
                     time.sleep(1)
                     st.rerun()
                     
@@ -91,7 +101,6 @@ else:
 
             st.divider()
             st.subheader("📝 Sistem Üzerinden Doğrudan Veri Girişi")
-            
             tab1, tab2, tab3 = st.tabs(["1️⃣ Lisansüstü Tezler", "2️⃣ Kişisel Performanslar", "3️⃣ E-Posta Adresleri"])
             with tab1: yeni_df = st.data_editor(df, num_rows="dynamic", use_container_width=True)
             with tab2: yeni_kisisel = st.data_editor(kisisel_df, num_rows="dynamic", use_container_width=True)
@@ -102,16 +111,20 @@ else:
                     yeni_df.to_excel(writer, sheet_name="Sheet1", index=False)
                     yeni_mailler.to_excel(writer, sheet_name="Mailler", index=False)
                     yeni_kisisel.to_excel(writer, sheet_name="Kişisel Performans", index=False)
-                st.success("✅ Veriler sisteme başarıyla kaydedildi. 'Performans Paneli'ne geçebilirsiniz.")
+                st.success("✅ Veriler sisteme başarıyla kaydedildi.")
 
         # =========================================================================
-        # SAYFA 2: PERFORMANS PANELİ (DASHBOARD)
+        # SAYFA 2: PERFORMANS PANELİ
         # =========================================================================
         elif menu == "📊 Performans Paneli":
             st.title("Nevşehir Hacı Bektaş Veli Üniversitesi")
             st.subheader("Turizm Araştırmaları Enstitüsü - Bütünleşik Akademik Performans Sistemi")
 
-            # Veri Temizliği
+            if len(df) == 0:
+                st.error("⚠️ SİSTEMDE VERİ BULUNAMADI! Lütfen 'Veri Girişi ve Düzenleme' sekmesine giderek bilgisayarınızdaki Excel dosyasını sisteme yükleyiniz.")
+                st.stop()
+
+            # Veri Temizliği (Boşlukları ve Büyük/Küçük harf uyumsuzluklarını önler)
             df["Danışman Adı ve Soyadı"] = df["Danışman Adı ve Soyadı"].astype(str).str.strip()
             kisisel_df["Danışman Adı ve Soyadı"] = kisisel_df["Danışman Adı ve Soyadı"].astype(str).str.strip()
             mailler_df["Danışman Adı ve Soyadı"] = mailler_df["Danışman Adı ve Soyadı"].astype(str).str.strip()
@@ -126,20 +139,24 @@ else:
 
             hoca_abd_map = df.drop_duplicates(subset=["Danışman Adı ve Soyadı"])[["Danışman Adı ve Soyadı", "Kayıt olunan Anabilim dalı"]]
 
-            # PUANLAMA MOTORLARI
+            # MÜKEMMELLEŞTİRİLMİŞ TÜRKÇE KARAKTER DÜZELTİCİ FONKSİYON
+            def text_temizle(metin):
+                return str(metin).upper().replace("İ", "I").replace("Ü", "U").replace("Ö", "O").replace("Ş", "S").replace("Ç", "C").replace("Ğ", "G").replace(" ", "")
+
+            # --- 1. LİSANSÜSTÜ PUANLAMA MOTORU (NEVÜ EK-1 YÖNERGESİ İNDEKS) ---
             def puan_hesapla_lisansustu(row):
                 try:
-                    t = str(row.get("Eser Türü", "")).upper()
-                    i = str(row.get("Eserin Indeksi", "")).upper().replace(" ", "")
-                    if t == "YAYIN YOK" or t == "NAN" or t == "": return 0.0
+                    t = text_temizle(row.get("Eser Türü", ""))
+                    i = text_temizle(row.get("Eserin Indeksi", ""))
+                    if t == "YAYINYOK" or t == "NAN" or t == "": return 0.0
                     puan = 0.0
                     if "MAKALE" in t:
                         if "SSCI" in i or "SCI" in i: puan = 1.00
                         elif "ESCI" in i or "SCOPUS" in i or "AHCI" in i: puan = 0.70
-                        elif "TRDIZIN" in i or "TRDİZİN" in i: puan = 0.20
+                        elif "TRDIZIN" in i: puan = 0.20
                         else: puan = 0.10
-                    elif "KİTAP" in t or "KITAP" in t:
-                        if "BÖLÜM" in t or "BOLUM" in t:
+                    elif "KITAP" in t:
+                        if "BOLUM" in t:
                             if "BKCI" in i: puan = 0.70
                             elif "ULUSAL" in i: puan = 0.20
                             else: puan = 0.20
@@ -147,51 +164,52 @@ else:
                             if "BKCI" in i: puan = 1.00
                             elif "ULUSAL" in i: puan = 0.20
                             else: puan = 0.30
-                    elif "KONGRE" in t or "BİLDİRİ" in t or "BILDIRI" in t or "SEMPOZYUM" in t:
+                    elif "KONGRE" in t or "BILDIRI" in t or "SEMPOZYUM" in t:
                         puan = 0.05
                     elif "PROJE" in t:
                         if "1001" in i: puan = 1.00
                         elif "1002" in i: puan = 0.50
                         elif "2209" in i: puan = 0.25
                         elif "AB" in i: puan = 1.00
-                        elif "İHTİSAS" in i or "IHTISAS" in i: puan = 0.50
+                        elif "IHTISAS" in i: puan = 0.50
                         elif "BAP" in i: puan = 0.15
                         else: puan = 0.05
                     return puan
                 except: return 0.0
 
+            # --- 2. KİŞİSEL PUANLAMA MOTORU (NEVÜ EK-1 YÖNERGESİ KİŞİSEL ESERLER) ---
             def puan_hesapla_kisisel(row):
                 if "Puan" in row and pd.notna(row["Puan"]):
                     try: return float(row["Puan"])
                     except: pass
                 try:
-                    t = str(row.get("Eser Türü", "")).upper()
-                    i = str(row.get("Eserin Indeksi", "")).upper().replace(" ", "")
-                    if t == "YAYIN YOK" or t == "NAN" or t == "": return 0.0
+                    t = text_temizle(row.get("Eser Türü", ""))
+                    i = text_temizle(row.get("Eserin Indeksi", ""))
+                    if t == "YAYINYOK" or t == "NAN" or t == "": return 0.0
                     puan = 0.0
                     if "MAKALE" in t:
                         if "Q1" in i: puan = 30.0
                         elif "Q2" in i: puan = 20.0
                         elif "Q3" in i: puan = 15.0
-                        elif "Q4" in i or "TRDIZIN" in i or "TRDİZİN" in i: puan = 10.0
+                        elif "Q4" in i or "TRDIZIN" in i: puan = 10.0
                         elif "AHCI" in i: puan = 20.0
                         elif "ESCI" in i or "SCOPUS" in i: puan = 10.0
                         else: puan = 5.0
-                    elif "KİTAP" in t or "KITAP" in t:
-                        if "BÖLÜM" in t or "BOLUM" in t: puan = 10.0 if "BKCI" in i else 5.0
-                        elif "ÇEVİRİ" in t or "CEVIRI" in t: puan = 5.0
+                    elif "KITAP" in t:
+                        if "BOLUM" in t: puan = 10.0 if "BKCI" in i else 5.0
+                        elif "CEVIRI" in t: puan = 5.0
                         else: puan = 20.0 if "BKCI" in i else 5.0
-                    elif "BİLDİRİ" in t or "BILDIRI" in t or "TOPLANTI" in t or "KONGRE" in t:
+                    elif "BILDIRI" in t or "TOPLANTI" in t or "KONGRE" in t:
                         puan = 5.0 if "CPCI" in i else 3.0
                     elif "ATIF" in t:
                         if "SCI" in i or "SSCI" in i: puan = 3.0
                         elif "BKCI" in i or "TR" in i: puan = 2.0
                         else: puan = 1.0
-                    elif "HAKEMLİK" in t or "HAKEMLIK" in t or "EDİTÖR" in t or "EDITOR" in t:
+                    elif "HAKEMLIK" in t or "EDITOR" in t:
                         puan = 2.0
                     elif "PATENT" in t:
                         puan = 20.0 if "ULUSLARARASI" in i else 10.0
-                    elif "ÖDÜL" in t or "ODUL" in t:
+                    elif "ODUL" in t:
                         puan = 25.0
                     elif "PROJE" in t:
                         puan = 15.0 if "1001" in i or "AB" in i else 10.0
@@ -221,16 +239,21 @@ else:
                 (df["Eserin Indeksi"].isin(secilen_indeksler))
             ]
 
-            # GÖRSEL HESAPLAMALAR
             anabilim_data = filtrelenmis_df.groupby("Kayıt olunan Anabilim dalı")["Tez Adı"].nunique().reset_index(name="Sayı")
             anabilim_data.sort_values(by="Sayı", ascending=False, inplace=True)
+            
             program_data = filtrelenmis_df.groupby("Program")["Tez Adı"].nunique().reset_index(name="Sayı")
             program_data.sort_values(by="Sayı", ascending=False, inplace=True)
 
             gercek_eserler_df = filtrelenmis_df[filtrelenmis_df["Eser Türü"] != "Yayın Yok"]
-            ssci_hocalar_global = filtrelenmis_df[filtrelenmis_df["Eserin Indeksi"].str.contains("SSCI|SCI", case=False, na=False)]["Danışman Adı ve Soyadı"].unique()
 
-            # --- İNDEKS PUANLARI HESAPLAMA ---
+            ssci_hocalar_global = filtrelenmis_df[filtrelenmis_df["Eserin Indeksi"].str.contains("SSCI|SCI", case=False, na=False)]["Danışman Adı ve Soyadı"].unique()
+            def ssci_renklendir(row):
+                if row["Danışman Adı ve Soyadı"] in ssci_hocalar_global:
+                    return ['background-color: rgba(46, 204, 113, 0.25)'] * len(row)
+                return [''] * len(row)
+
+            # BÜTÜNLEŞİK PUAN HESAPLAMASI
             yl_df = filtrelenmis_df[filtrelenmis_df["Program"].str.contains("yüksek|lisans|yl", case=False, na=False)]
             dr_df = filtrelenmis_df[filtrelenmis_df["Program"].str.contains("doktora|dr|phd", case=False, na=False)]
 
@@ -254,10 +277,11 @@ else:
             puan_tablosu["Kişisel İndeks Puanı"] = puan_tablosu["Kişisel İndeks Puanı"].fillna(0.0)
             puan_tablosu["Akademisyen İndeks Puanı"] = puan_tablosu["Lisansüstü İndeks Puanı"] + puan_tablosu["Kişisel İndeks Puanı"]
             puan_tablosu = pd.merge(puan_tablosu, hoca_abd_map, on="Danışman Adı ve Soyadı", how="left")
-            puan_tablosu = pd.merge(puan_tablosu, mailler_df, on="Danışman Adı ve Soyadı", how="left")
             puan_tablosu.sort_values("Akademisyen İndeks Puanı", ascending=False, inplace=True)
 
-            # --- EKRAN ÇIKTILARI (BÖLÜMLER) ---
+            st.divider()
+
+            # --- EKRAN ÇIKTILARI (DASHBOARD) ---
             with st.expander("📊 1️⃣ Genel Dağılım Grafikleri", expanded=True):
                 col1, col2 = st.columns(2)
                 with col1:
@@ -270,6 +294,7 @@ else:
                     st.plotly_chart(fig2, use_container_width=True)
 
             with st.expander("🎯 2️⃣ Bütünleşik Akademisyen İndeks Tablosu (Enstitü Geneli)", expanded=True):
+                st.info("💡 **Bilgi:** Öğretim üyelerinin 'Kişisel İndeks' puanları **NEVÜ EK-1 Yönergesindeki resmi katsayılara** göre hesaplanmıştır. Puanlar otomatik olarak hesaplanıp 100'e bölünerek İndeks formatına dönüştürülmüştür.")
                 gosterim_puan = puan_tablosu[["Danışman Adı ve Soyadı", "Kayıt olunan Anabilim dalı", "Lisansüstü İndeks Puanı", "Kişisel İndeks Puanı", "Akademisyen İndeks Puanı"]]
                 st.dataframe(gosterim_puan.style.format({"Lisansüstü İndeks Puanı": "{:.2f}", "Kişisel İndeks Puanı": "{:.2f}", "Akademisyen İndeks Puanı": "{:.2f}"}), use_container_width=True)
 
@@ -287,8 +312,9 @@ else:
                         gonderici_mail = st.secrets["email"]["gonderici_mail"]
                         gonderici_sifre = st.secrets["email"]["gonderici_sifre"]
                         hedef_kitle = puan_tablosu[puan_tablosu["Akademisyen İndeks Puanı"] > 0]
-                        
-                        if len(hedef_kitle) > 0:
+                        if len(hedef_kitle) == 0:
+                            st.warning("Gönderilecek hoca bulunamadı.")
+                        else:
                             my_bar = st.progress(0, text="Gönderiliyor...")
                             basarili = 0
                             server = smtplib.SMTP('smtp.gmail.com', 587)
@@ -318,7 +344,6 @@ else:
                 st.markdown("Yönetime sunulmak üzere resmi rapor hazırlayabilirsiniz.")
                 if st.button("📄 Detaylı Raporları Hazırla (PDF ve HTML)", use_container_width=True):
                     
-                    # HTML Üretimi
                     html_puan = "<table class='mystyle' style='width:100%; border-collapse: collapse; font-size:11px; margin-top:5px;'>"
                     html_puan += "<tr><th style='background-color: #34495E; color: white; padding: 6px; text-align:left;'>Danışman Adı ve Soyadı</th><th style='background-color: #34495E; color: white; padding: 6px; text-align:center;'>Lisansüstü İndeks</th><th style='background-color: #34495E; color: white; padding: 6px; text-align:center;'>Kişisel İndeks</th><th style='background-color: #34495E; color: white; padding: 6px; text-align:center;'>Akademisyen İndeksi</th></tr>"
                     row_count = 0
