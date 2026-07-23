@@ -27,7 +27,7 @@ if not st.session_state["logged_in"]:
             st.write("🔒 **Lütfen Giriş Yapınız**")
             kullanici = st.text_input("Kullanıcı Adı")
             sifre = st.text_input("Şifre", type="password")
-            submit = st.form_submit_submit_button("Giriş Yap", use_container_width=True)
+            submit = st.form_submit_button("Giriş Yap", use_container_width=True)
             
             if submit:
                 try:
