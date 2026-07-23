@@ -39,7 +39,7 @@ if not st.session_state["logged_in"]:
                 except Exception as e:
                     st.error("Secrets (Şifre) ayarları bulunamadı. Lütfen Streamlit Cloud ayarlarını kontrol edin.")
 else:
-    # --- ANA UYGULAMA (GİRİŞ YAPILDIKTAN SONRA) ---
+    # --- ANA UYGULAMA ---
     try:
         if not os.path.exists("veriler.xlsx"):
             with pd.ExcelWriter("veriler.xlsx", engine="openpyxl") as writer:
@@ -47,20 +47,16 @@ else:
                 pd.DataFrame(columns=["Danışman Adı ve Soyadı", "E-Posta Adresi"]).to_excel(writer, sheet_name="Mailler", index=False)
                 pd.DataFrame(columns=["Danışman Adı ve Soyadı", "Eser Türü", "Eserin Indeksi", "Puan"]).to_excel(writer, sheet_name="Kişisel Performans", index=False)
 
-        # Verileri Okuma
+        # Verileri Okuma ve Temizleme
         df = pd.read_excel("veriler.xlsx", sheet_name=0)
         df.rename(columns=lambda x: str(x).strip(), inplace=True)
         if "Eserin İndeksi" in df.columns and "Eserin Indeksi" not in df.columns:
             df.rename(columns={"Eserin İndeksi": "Eserin Indeksi"}, inplace=True)
 
-        # AKILLI HATA BULUCU
         gerekli_sutunlar_df = ["Danışman Adı ve Soyadı", "Eser Türü", "Eserin Indeksi", "Kayıt olunan Anabilim dalı", "Program", "Tez Adı"]
         eksik_sutunlar_df = [col for col in gerekli_sutunlar_df if col not in df.columns]
-        
         if eksik_sutunlar_df:
             st.error(f"❌ **Kritik Hata:** Yüklediğiniz Excel'in 1. Sayfasında şu sütun başlıkları bulunamadı: **{', '.join(eksik_sutunlar_df)}**")
-            st.info(f"👉 **Sizin Excelinizdeki Başlıklar Şunlar:** {', '.join(df.columns)}")
-            st.warning("Lütfen 'Veri Girişi ve Düzenleme' sekmesine gidip Excel dosyanızı indirerek başlıkları düzeltip tekrar yükleyin.")
             st.stop()
 
         try: 
@@ -137,13 +133,35 @@ else:
             df["Danışman Adı ve Soyadı"] = df["Danışman Adı ve Soyadı"].astype(str).str.strip()
             kisisel_df["Danışman Adı ve Soyadı"] = kisisel_df.get("Danışman Adı ve Soyadı", pd.Series(dtype=str)).astype(str).str.strip()
             mailler_df["Danışman Adı ve Soyadı"] = mailler_df.get("Danışman Adı ve Soyadı", pd.Series(dtype=str)).astype(str).str.strip()
-
+            
             df["Eser Türü"] = df["Eser Türü"].fillna("Yayın Yok")
             df["Eserin Indeksi"] = df["Eserin Indeksi"].fillna("İndeks Yok")
             kisisel_df["Eser Türü"] = kisisel_df.get("Eser Türü", pd.Series(dtype=str)).fillna("Yayın Yok")
             kisisel_df["Eserin Indeksi"] = kisisel_df.get("Eserin Indeksi", pd.Series(dtype=str)).fillna("İndeks Yok")
 
-            hoca_abd_map = df.drop_duplicates(subset=["Danışman Adı ve Soyadı"])[["Danışman Adı ve Soyadı", "Kayıt olunan Anabilim dalı"]]
+            # --- YENİ EKLENEN: AKILLI HOCA - ANABİLİM DALI EŞLEŞTİRİCİ ---
+            def gercek_abd_bul(isim):
+                isim_temiz = str(isim).upper().replace("İ", "I").replace("Ü", "U").replace("Ö", "O").replace("Ş", "S").replace("Ç", "C").replace("Ğ", "G")
+                
+                gastronomi = ["NILUFER SAHIN", "LUTFI BUYRUK", "IBRAHIM ILHAN", "EMINE KALE", "EMRAH KESKIN", "GUNAY EROL", "FIRDEVS YONET EREN", "DURMUS ALI AYDEMIR", "KADER PARLAK", "INCI ILLEEZ", "SINEM DIKME GUL"]
+                isletme = ["SULE AYDIN", "DUYGU EREN", "SULE ARDIC YETIS", "EBRU GUNEREN", "BURCU GULSEVIL BELBER", "EDA OZGUL KATLAV", "OZAN ATSIZ", "GAYE DENIZ", "GAMZE COBAN YILDIZ", "NESE YILMAZ", "LOKMAN DINC", "ONUR SEVKET YILDIZ", "MERAL AKYUZ", "RUMEYSA UNAT"]
+                rehberlik = ["BEKIR BORA DEDEOGLU", "IBRAHIM YILMAZ", "ZEYNEP COKAL", "OMER COBAN", "IBRAHIM AKIN OZEN", "KORAY CAMLICA", "MERAL DURSUN KUCUKOGLU", "NURGUL CALISKAN", "MERAL BUYUKKURU", "HULYA CEYLAN", "FILIZ YUKSEL", "AYBUKE OZSOY", "FILIZ DALKILIC", "BUSRA YAMANGIL"]
+                inanc = ["OMER UZUNEL"]
+                
+                for ad in gastronomi:
+                    if ad in isim_temiz: return "Gastronomi ve Mutfak Sanatları"
+                for ad in isletme:
+                    if ad in isim_temiz: return "Turizm İşletmeciliği"
+                for ad in rehberlik:
+                    if ad in isim_temiz: return "Turizm Rehberliği"
+                for ad in inanc:
+                    if ad in isim_temiz: return "İnanç Turizmi"
+                return "Diğer"
+
+            # Tüm hocaların gerçek ABD listesini çıkartıyoruz
+            tum_hocalar = list(set(df["Danışman Adı ve Soyadı"].dropna().tolist() + kisisel_df["Danışman Adı ve Soyadı"].dropna().tolist()))
+            hoca_abd_map = pd.DataFrame({"Danışman Adı ve Soyadı": tum_hocalar})
+            hoca_abd_map["Danışmanın Gerçek ABD"] = hoca_abd_map["Danışman Adı ve Soyadı"].apply(gercek_abd_bul)
 
             def text_temizle(metin):
                 return str(metin).upper().replace("İ", "I").replace("Ü", "U").replace("Ö", "O").replace("Ş", "S").replace("Ç", "C").replace("Ğ", "G").replace(" ", "")
@@ -225,7 +243,7 @@ else:
                 kisisel_puan_toplam = pd.DataFrame(columns=["Danışman Adı ve Soyadı", "Kişisel İndeks Puanı"])
 
             st.sidebar.markdown("---")
-            secilen_anabilim = st.sidebar.multiselect("Anabilim Dalı:", options=df["Kayıt olunan Anabilim dalı"].dropna().unique(), default=df["Kayıt olunan Anabilim dalı"].dropna().unique())
+            secilen_anabilim = st.sidebar.multiselect("Öğrenci Kayıtlı ABD:", options=df["Kayıt olunan Anabilim dalı"].dropna().unique(), default=df["Kayıt olunan Anabilim dalı"].dropna().unique())
             secilen_program = st.sidebar.multiselect("Program Seçiniz:", options=df["Program"].dropna().unique(), default=df["Program"].dropna().unique())
             secilen_turler = st.sidebar.multiselect("Eser Türü:", options=df["Eser Türü"].unique(), default=df["Eser Türü"].unique())
             secilen_indeksler = st.sidebar.multiselect("İndeks:", options=df["Eserin Indeksi"].unique(), default=df["Eserin Indeksi"].unique())
@@ -237,14 +255,15 @@ else:
                 (df["Eserin Indeksi"].isin(secilen_indeksler))
             ]
 
-            # GRAFİKLER İÇİN HESAPLAMALAR VE SÜTUN İSMİ DÜZELTMELERİ (HATA BURADAYDI)
             anabilim_data = filtrelenmis_df.groupby("Kayıt olunan Anabilim dalı")["Tez Adı"].nunique().reset_index(name="Sayı")
             anabilim_data.sort_values(by="Sayı", ascending=False, inplace=True)
-            anabilim_data.columns = ["Anabilim Dalı", "Sayı"] # DÜZELTİLDİ: Sütun adını grafiğin okuyacağı şekilde kısalttık
+            anabilim_data.columns = ["Anabilim Dalı", "Sayı"]
             
             program_data = filtrelenmis_df.groupby("Program")["Tez Adı"].nunique().reset_index(name="Sayı")
             program_data.sort_values(by="Sayı", ascending=False, inplace=True)
-            program_data.columns = ["Program", "Sayı"] # DÜZELTİLDİ
+            program_data.columns = ["Program", "Sayı"]
+
+            gercek_eserler_df = filtrelenmis_df[filtrelenmis_df["Eser Türü"] != "Yayın Yok"]
 
             ssci_hocalar_global = filtrelenmis_df[filtrelenmis_df["Eserin Indeksi"].str.contains("SSCI|SCI", case=False, na=False)]["Danışman Adı ve Soyadı"].unique()
 
@@ -253,6 +272,7 @@ else:
                     return ['background-color: rgba(46, 204, 113, 0.25)'] * len(row)
                 return [''] * len(row)
 
+            # BÜTÜNLEŞİK PUAN HESAPLAMASI
             yl_df = filtrelenmis_df[filtrelenmis_df["Program"].str.contains("yüksek|lisans|yl", case=False, na=False)]
             dr_df = filtrelenmis_df[filtrelenmis_df["Program"].str.contains("doktora|dr|phd", case=False, na=False)]
 
@@ -275,16 +295,18 @@ else:
             puan_tablosu = pd.merge(puan_tablosu, kisisel_puan_toplam, on="Danışman Adı ve Soyadı", how="left")
             puan_tablosu["Kişisel İndeks Puanı"] = puan_tablosu["Kişisel İndeks Puanı"].fillna(0.0)
             puan_tablosu["Akademisyen İndeks Puanı"] = puan_tablosu["Lisansüstü İndeks Puanı"] + puan_tablosu["Kişisel İndeks Puanı"]
+            
+            # Danışmanın Gerçek Bölümünü Puan Tablosuna Ekliyoruz
             puan_tablosu = pd.merge(puan_tablosu, hoca_abd_map, on="Danışman Adı ve Soyadı", how="left")
             puan_tablosu.sort_values("Akademisyen İndeks Puanı", ascending=False, inplace=True)
 
             st.divider()
 
-            # --- GÖRSEL ARAYÜZ (DASHBOARD) ---
+            # --- EKRAN ÇIKTILARI (DASHBOARD) ---
             with st.expander("📊 1️⃣ Genel Dağılım Grafikleri", expanded=True):
                 col1, col2 = st.columns(2)
                 with col1:
-                    fig1 = px.bar(anabilim_data, x="Anabilim Dalı", y="Sayı", text="Sayı", color="Anabilim Dalı", title="Anabilim Dallarına Göre Biten Tez Sayısı")
+                    fig1 = px.bar(anabilim_data, x="Anabilim Dalı", y="Sayı", text="Sayı", color="Anabilim Dalı", title="Öğrenci Anabilim Dallarına Göre Biten Tez Sayısı")
                     fig1.update_traces(textposition='inside', insidetextanchor='middle', textfont_size=22, texttemplate='<b>%{text}</b>', textfont_color="white")
                     st.plotly_chart(fig1, use_container_width=True)
                 with col2:
@@ -293,15 +315,15 @@ else:
                     st.plotly_chart(fig2, use_container_width=True)
 
             with st.expander("🎯 2️⃣ Bütünleşik Akademisyen İndeks Tablosu (Enstitü Geneli)", expanded=True):
-                st.info("💡 **Bilgi:** Öğretim üyelerinin 'Kişisel İndeks' puanları **NEVÜ EK-1 Yönergesindeki resmi katsayılara** göre analiz edilip hesaplanmıştır.")
-                gosterim_puan = puan_tablosu[["Danışman Adı ve Soyadı", "Kayıt olunan Anabilim dalı", "Lisansüstü İndeks Puanı", "Kişisel İndeks Puanı", "Akademisyen İndeks Puanı"]]
+                st.info("💡 **Bilgi:** Öğretim üyelerinin puanları, öğrencileri farklı bölümlerde olsa bile **Danışmanın Gerçek Anabilim Dalı** baz alınarak eşleştirilmiştir.")
+                gosterim_puan = puan_tablosu[["Danışman Adı ve Soyadı", "Danışmanın Gerçek ABD", "Lisansüstü İndeks Puanı", "Kişisel İndeks Puanı", "Akademisyen İndeks Puanı"]]
                 st.dataframe(gosterim_puan.style.format({"Lisansüstü İndeks Puanı": "{:.2f}", "Kişisel İndeks Puanı": "{:.2f}", "Akademisyen İndeks Puanı": "{:.2f}"}), use_container_width=True)
 
             with st.expander("🎯 3️⃣ Anabilim Dalı Özelinde İndeks Sıralamaları (Bölüm İçi)", expanded=True):
-                abd_listesi = sorted(puan_tablosu["Kayıt olunan Anabilim dalı"].dropna().unique())
+                abd_listesi = sorted(puan_tablosu["Danışmanın Gerçek ABD"].dropna().unique())
                 for abd in abd_listesi:
-                    st.write(f"📌 **{abd} Anabilim Dalı Atama Sıralaması**")
-                    temp_abd = puan_tablosu[puan_tablosu["Kayıt olunan Anabilim dalı"] == abd].copy()
+                    st.write(f"📌 **{abd} Atama Sıralaması**")
+                    temp_abd = puan_tablosu[puan_tablosu["Danışmanın Gerçek ABD"] == abd].copy()
                     temp_abd.sort_values("Akademisyen İndeks Puanı", ascending=False, inplace=True)
                     st.dataframe(temp_abd[["Danışman Adı ve Soyadı", "Lisansüstü İndeks Puanı", "Kişisel İndeks Puanı", "Akademisyen İndeks Puanı"]].style.format({"Lisansüstü İndeks Puanı": "{:.2f}", "Kişisel İndeks Puanı": "{:.2f}", "Akademisyen İndeks Puanı": "{:.2f}"}), use_container_width=True)
 
@@ -339,163 +361,30 @@ else:
                     except Exception as e:
                         st.error(f"❌ Mail Hatası (Secrets dosyasını kontrol edin): {e}")
 
-            # --- DEVASA PDF RAPOR ÜRETİCİSİ (1'den 6'ya Tüm Bölümlerle) ---
             with st.expander("📑 5️⃣ PDF / Detaylı Rapor İndirici", expanded=True):
-                st.markdown("Yönetime sunulmak üzere detaylı resmi rapor hazırlayabilirsiniz.")
+                st.markdown("Yönetime sunulmak üzere resmi rapor hazırlayabilirsiniz.")
                 if st.button("📄 Detaylı Raporları Hazırla (PDF ve HTML)", use_container_width=True):
                     
-                    # YARDIMCI FONKSİYON 1
-                    def alt_rapor_uret(temp_df):
-                        if temp_df.empty: return "<p>Veri bulunmamaktadır.</p>", "<p>Veri yok.</p>"
-                        local_ssci = temp_df[temp_df["Eserin Indeksi"].str.contains("SSCI|SCI", case=False, na=False)]["Danışman Adı ve Soyadı"].unique()
-                        t_tez = temp_df.groupby("Kayıt olunan Anabilim dalı")["Tez Adı"].nunique().reset_index(name="Biten Tez")
-                        t_eser = temp_df[temp_df["Eser Türü"] != "Yayın Yok"].groupby("Kayıt olunan Anabilim dalı").size().reset_index(name="Eser Sayısı")
-                        r_ad = pd.merge(t_tez, t_eser, on="Kayıt olunan Anabilim dalı", how="left").fillna(0)
-                        r_ad["Performans (%)"] = (r_ad["Eser Sayısı"] / r_ad["Biten Tez"]) * 100
-                        r_ad.fillna(0, inplace=True)
-                        r_ad.sort_values("Performans (%)", ascending=False, inplace=True)
-                        r_ad["Performans (%)"] = r_ad["Performans (%)"].apply(lambda x: f"% {x:.0f}")
-                        r_ad["Biten Tez"] = r_ad["Biten Tez"].astype(int)
-                        r_ad["Eser Sayısı"] = r_ad["Eser Sayısı"].astype(int)
-                        
-                        html_ad = "<table class='mystyle' style='width:100%; border-collapse: collapse; font-size:11px; margin-top:5px;'>"
-                        html_ad += "<tr><th style='background-color: #34495E; color: white; padding: 6px; text-align:left;'>Anabilim Dalı</th><th style='background-color: #34495E; color: white; padding: 6px; text-align:center;'>Biten Tez</th><th style='background-color: #34495E; color: white; padding: 6px; text-align:center;'>Eser Sayısı</th><th style='background-color: #34495E; color: white; padding: 6px; text-align:center;'>Performans (%)</th></tr>"
-                        row_count = 0
-                        for _, row in r_ad.iterrows():
-                            bg = "#F8F9F9" if row_count % 2 == 0 else "#FFFFFF"
-                            html_ad += f"<tr style='background-color: {bg};'><td style='border: 1px solid #ddd; padding: 6px;'>{row['Kayıt olunan Anabilim dalı']}</td><td style='border: 1px solid #ddd; padding: 6px; text-align:center;'>{row['Biten Tez']}</td><td style='border: 1px solid #ddd; padding: 6px; text-align:center;'>{row['Eser Sayısı']}</td><td style='border: 1px solid #ddd; padding: 6px; text-align:center;'><b>{row['Performans (%)']}</b></td></tr>"
-                            row_count += 1
-                        html_ad += "</table>"
-
-                        h_tez = temp_df.groupby("Danışman Adı ve Soyadı")["Tez Adı"].nunique().reset_index(name="Biten Tez")
-                        h_eser = temp_df[temp_df["Eser Türü"] != "Yayın Yok"].groupby("Danışman Adı ve Soyadı").size().reset_index(name="Eser Sayısı")
-                        r_hoca = pd.merge(h_tez, h_eser, on="Danışman Adı ve Soyadı", how="left").fillna(0)
-                        r_hoca["Performans (%)"] = (r_hoca["Eser Sayısı"] / r_hoca["Biten Tez"]) * 100
-                        r_hoca.fillna(0, inplace=True)
-                        r_hoca = r_hoca[r_hoca["Performans (%)"] > 0] 
-                        r_hoca.sort_values("Performans (%)", ascending=False, inplace=True)
-                        r_hoca["Performans (%)"] = r_hoca["Performans (%)"].apply(lambda x: f"% {x:.0f}")
-                        r_hoca["Biten Tez"] = r_hoca["Biten Tez"].astype(int)
-                        r_hoca["Eser Sayısı"] = r_hoca["Eser Sayısı"].astype(int)
-                        
-                        if r_hoca.empty:
-                            html_hoca = "<p>Bu program türünde henüz eser üreten danışman bulunmamaktadır.</p>"
-                        else:
-                            html_hoca = "<table class='mystyle' style='width:100%; border-collapse: collapse; font-size:11px; margin-top:5px;'>"
-                            html_hoca += "<tr><th style='background-color: #34495E; color: white; padding: 6px; text-align:left;'>Danışman Adı ve Soyadı</th><th style='background-color: #34495E; color: white; padding: 6px; text-align:center;'>Biten Tez</th><th style='background-color: #34495E; color: white; padding: 6px; text-align:center;'>Eser Sayısı</th><th style='background-color: #34495E; color: white; padding: 6px; text-align:center;'>Performans (%)</th></tr>"
-                            row_count = 0
-                            for _, row in r_hoca.head(10).iterrows():
-                                bg_color = "#D5F5E3" if row["Danışman Adı ve Soyadı"] in local_ssci else ("#F8F9F9" if row_count % 2 == 0 else "#FFFFFF")
-                                html_hoca += f"<tr style='background-color: {bg_color};'><td style='border: 1px solid #ddd; padding: 6px;'>{row['Danışman Adı ve Soyadı']}</td><td style='border: 1px solid #ddd; padding: 6px; text-align:center;'>{row['Biten Tez']}</td><td style='border: 1px solid #ddd; padding: 6px; text-align:center;'>{row['Eser Sayısı']}</td><td style='border: 1px solid #ddd; padding: 6px; text-align:center;'><b>{row['Performans (%)']}</b></td></tr>"
-                                row_count += 1
-                            html_hoca += "</table>"
-                            if len(local_ssci) > 0:
-                                ssci_isimler = ", ".join(sorted(local_ssci))
-                                html_hoca += f"<div style='margin-top:10px; font-size: 10px; color: #27AE60; background-color: #EAFAF1; padding: 8px; border-left: 3px solid #2ECC71;'><b>🌟 Kalite Vurgusu:</b> Açık yeşil renkle vurgulanan danışmanlar, bu programa ait tezlerden <b>SSCI veya SCI/SCI-E</b> indekslerinde eser ürettirmiş üstün başarılı öğretim üyeleridir:<br><i>{ssci_isimler}</i></div>"
-                        return html_ad, html_hoca
-
-                    # YARDIMCI FONKSİYON 2
-                    def tam_liste_uret(temp_df, tez_sutun_adi):
-                        if temp_df.empty: return "<p>Veri bulunmamaktadır.</p>"
-                        local_ssci = temp_df[temp_df["Eserin Indeksi"].str.contains("SSCI|SCI", case=False, na=False)]["Danışman Adı ve Soyadı"].unique()
-                        h_tez = temp_df.groupby("Danışman Adı ve Soyadı")["Tez Adı"].nunique().reset_index(name=tez_sutun_adi)
-                        h_eser = temp_df[temp_df["Eser Türü"] != "Yayın Yok"].groupby("Danışman Adı ve Soyadı").size().reset_index(name="Üretilen Eser")
-                        
-                        res = pd.merge(h_tez, h_eser, on="Danışman Adı ve Soyadı", how="left").fillna(0)
-                        res["Performans (%)"] = (res["Üretilen Eser"] / res[tez_sutun_adi]) * 100
-                        res.fillna(0, inplace=True)
-                        res.sort_values(by=["Performans (%)", "Danışman Adı ve Soyadı"], ascending=[False, True], inplace=True)
-                        
-                        res[tez_sutun_adi] = res[tez_sutun_adi].astype(int)
-                        res["Üretilen Eser"] = res["Üretilen Eser"].astype(int)
-                        res["Performans (%)"] = res["Performans (%)"].apply(lambda x: f"% {x:.0f}")
-                        
-                        html_table = "<table class='mystyle' style='width:100%; border-collapse: collapse; font-size:11px; margin-top:5px;'>"
-                        html_table += f"<tr><th style='background-color: #34495E; color: white; padding: 6px; text-align:left;'>Danışman Adı ve Soyadı</th><th style='background-color: #34495E; color: white; padding: 6px; text-align:center;'>{tez_sutun_adi}</th><th style='background-color: #34495E; color: white; padding: 6px; text-align:center;'>Üretilen Eser</th><th style='background-color: #34495E; color: white; padding: 6px; text-align:center;'>Performans (%)</th></tr>"
-                        row_count = 0
-                        for _, row in res.iterrows():
-                            bg_color = "#D5F5E3" if row["Danışman Adı ve Soyadı"] in local_ssci else ("#F8F9F9" if row_count % 2 == 0 else "#FFFFFF")
-                            html_table += f"<tr style='background-color: {bg_color};'><td style='border: 1px solid #ddd; padding: 6px;'>{row['Danışman Adı ve Soyadı']}</td><td style='border: 1px solid #ddd; padding: 6px; text-align:center;'>{row[tez_sutun_adi]}</td><td style='border: 1px solid #ddd; padding: 6px; text-align:center;'>{row['Üretilen Eser']}</td><td style='border: 1px solid #ddd; padding: 6px; text-align:center;'><b>{row['Performans (%)']}</b></td></tr>"
-                            row_count += 1
-                        html_table += "</table>"
-                        if len(local_ssci) > 0:
-                            ssci_isimler = ", ".join(sorted(local_ssci))
-                            html_table += f"<div style='margin-top:10px; font-size: 10px; color: #27AE60; background-color: #EAFAF1; padding: 8px; border-left: 3px solid #2ECC71;'><b>🌟 Kalite Vurgusu:</b> Açık yeşil renkle vurgulanan danışmanlar, bu programa ait tezlerden <b>SSCI veya SCI/SCI-E</b> indekslerinde eser ürettirmiş üstün başarılı öğretim üyeleridir:<br><i>{ssci_isimler}</i></div>"
-                        return html_table
-
-                    yl_tez_say = yl_df.groupby("Kayıt olunan Anabilim dalı")["Tez Adı"].nunique().reset_index(name="YL Tezi")
-                    dr_tez_say = dr_df.groupby("Kayıt olunan Anabilim dalı")["Tez Adı"].nunique().reset_index(name="DR Tezi")
-                    yl_eser_say = yl_df[yl_df["Eser Türü"] != "Yayın Yok"].groupby("Kayıt olunan Anabilim dalı").size().reset_index(name="YL Toplam Eser")
-                    dr_eser_say = dr_df[dr_df["Eser Türü"] != "Yayın Yok"].groupby("Kayıt olunan Anabilim dalı").size().reset_index(name="DR Toplam Eser")
-                    tum_tez_say = filtrelenmis_df.groupby("Kayıt olunan Anabilim dalı")["Tez Adı"].nunique().reset_index(name="Toplam Tez")
-                    tum_eser_say = filtrelenmis_df[filtrelenmis_df["Eser Türü"] != "Yayın Yok"].groupby("Kayıt olunan Anabilim dalı").size().reset_index(name="Toplam Eser")
-                    
-                    genel_ozet = pd.merge(tum_tez_say, tum_eser_say, on="Kayıt olunan Anabilim dalı", how="left")
-                    genel_ozet = pd.merge(genel_ozet, yl_tez_say, on="Kayıt olunan Anabilim dalı", how="left")
-                    genel_ozet = pd.merge(genel_ozet, yl_eser_say, on="Kayıt olunan Anabilim dalı", how="left")
-                    genel_ozet = pd.merge(genel_ozet, dr_tez_say, on="Kayıt olunan Anabilim dalı", how="left")
-                    genel_ozet = pd.merge(genel_ozet, dr_eser_say, on="Kayıt olunan Anabilim dalı", how="left").fillna(0)
-                    
-                    genel_ozet["Genel Performans (%)"] = (genel_ozet["Toplam Eser"] / genel_ozet["Toplam Tez"]) * 100
-                    genel_ozet.fillna(0, inplace=True)
-                    genel_ozet.sort_values("Genel Performans (%)", ascending=False, inplace=True)
-                    
-                    for col in ["Toplam Tez", "Toplam Eser", "YL Tezi", "YL Toplam Eser", "DR Tezi", "DR Toplam Eser"]:
-                        genel_ozet[col] = genel_ozet[col].astype(int)
-                    genel_ozet["Genel Performans (%)"] = genel_ozet["Genel Performans (%)"].apply(lambda x: f"% {x:.0f}")
-                    
-                    html_genel_ozet = "<table class='mystyle' style='width:100%; border-collapse: collapse; font-size:11px; margin-top:5px;'>"
-                    html_genel_ozet += "<tr><th style='background-color: #34495E; color: white; padding: 6px; text-align:left;'>Anabilim Dalı</th>"
-                    for col in ["Toplam Tez", "Toplam Eser", "YL Tezi", "YL Toplam Eser", "DR Tezi", "DR Toplam Eser", "Genel Performans (%)"]:
-                        html_genel_ozet += f"<th style='background-color: #34495E; color: white; padding: 6px; text-align:center;'>{col}</th>"
-                    html_genel_ozet += "</tr>"
-                    
-                    row_count = 0
-                    for _, row in genel_ozet.iterrows():
-                        bg_default = "#F8F9F9" if row_count % 2 == 0 else "#FFFFFF"
-                        bg_toplam = "#EBF5FB"  
-                        bg_yl = "#FEF5E7"      
-                        bg_dr = "#FDEDEC"      
-                        html_genel_ozet += "<tr>"
-                        html_genel_ozet += f"<td style='background-color: {bg_default}; border: 1px solid #ddd; padding: 6px;'>{row['Kayıt olunan Anabilim dalı']}</td>"
-                        html_genel_ozet += f"<td style='background-color: {bg_toplam}; border: 1px solid #ddd; padding: 6px; text-align:center;'>{row['Toplam Tez']}</td>"
-                        html_genel_ozet += f"<td style='background-color: {bg_toplam}; border: 1px solid #ddd; padding: 6px; text-align:center;'>{row['Toplam Eser']}</td>"
-                        html_genel_ozet += f"<td style='background-color: {bg_yl}; border: 1px solid #ddd; padding: 6px; text-align:center;'>{row['YL Tezi']}</td>"
-                        html_genel_ozet += f"<td style='background-color: {bg_yl}; border: 1px solid #ddd; padding: 6px; text-align:center;'>{row['YL Toplam Eser']}</td>"
-                        html_genel_ozet += f"<td style='background-color: {bg_dr}; border: 1px solid #ddd; padding: 6px; text-align:center;'>{row['DR Tezi']}</td>"
-                        html_genel_ozet += f"<td style='background-color: {bg_dr}; border: 1px solid #ddd; padding: 6px; text-align:center;'>{row['DR Toplam Eser']}</td>"
-                        html_genel_ozet += f"<td style='background-color: {bg_default}; border: 1px solid #ddd; padding: 6px; text-align:center;'><b>{row['Genel Performans (%)']}</b></td>"
-                        html_genel_ozet += "</tr>"
-                        row_count += 1
-                    html_genel_ozet += "</table>"
-
-                    yl_ad_html, yl_hoca_html = alt_rapor_uret(yl_df)
-                    dr_ad_html, dr_hoca_html = alt_rapor_uret(dr_df)
-                    html_yl_tam_liste = tam_liste_uret(yl_df, "Biten YL Tezi")
-                    html_dr_tam_liste = tam_liste_uret(dr_df, "Biten DR Tezi")
-
                     html_puan = "<table class='mystyle' style='width:100%; border-collapse: collapse; font-size:11px; margin-top:5px;'>"
-                    html_puan += "<tr><th style='background-color: #34495E; color: white; padding: 6px; text-align:left;'>Danışman Adı ve Soyadı</th><th style='background-color: #34495E; color: white; padding: 6px; text-align:center;'>Kayıt Olunan ABD</th><th style='background-color: #34495E; color: white; padding: 6px; text-align:center;'>Lisansüstü İndeks</th><th style='background-color: #34495E; color: white; padding: 6px; text-align:center;'>Kişisel İndeks</th><th style='background-color: #34495E; color: white; padding: 6px; text-align:center;'>Akademisyen İndeksi</th></tr>"
+                    html_puan += "<tr><th style='background-color: #34495E; color: white; padding: 6px; text-align:left;'>Danışman Adı ve Soyadı</th><th style='background-color: #34495E; color: white; padding: 6px; text-align:center;'>Danışmanın Bağlı Olduğu ABD</th><th style='background-color: #34495E; color: white; padding: 6px; text-align:center;'>Lisansüstü İndeks</th><th style='background-color: #34495E; color: white; padding: 6px; text-align:center;'>Kişisel İndeks</th><th style='background-color: #34495E; color: white; padding: 6px; text-align:center;'>Akademisyen İndeksi</th></tr>"
                     row_count = 0
                     for _, row in puan_tablosu.iterrows():
                         bg_default = "#F8F9F9" if row_count % 2 == 0 else "#FFFFFF"
-                        bg_genel = "#E8F8F5" 
                         html_puan += f"<tr style='background-color: {bg_default};'>"
                         html_puan += f"<td style='border: 1px solid #ddd; padding: 6px;'>{row['Danışman Adı ve Soyadı']}</td>"
-                        html_puan += f"<td style='border: 1px solid #ddd; padding: 6px; text-align:center;'>{row['Kayıt olunan Anabilim dalı']}</td>"
+                        html_puan += f"<td style='border: 1px solid #ddd; padding: 6px; text-align:center;'>{row['Danışmanın Gerçek ABD']}</td>"
                         html_puan += f"<td style='border: 1px solid #ddd; padding: 6px; text-align:center;'>{row['Lisansüstü İndeks Puanı']:.2f}</td>"
                         html_puan += f"<td style='border: 1px solid #ddd; padding: 6px; text-align:center;'>{row['Kişisel İndeks Puanı']:.2f}</td>"
-                        html_puan += f"<td style='background-color: {bg_genel}; border: 1px solid #ddd; padding: 6px; text-align:center; font-size:12px; color:#145A32;'><b>{row['Akademisyen İndeks Puanı']:.2f}</b></td>"
+                        html_puan += f"<td style='background-color: #E8F8F5; border: 1px solid #ddd; padding: 6px; text-align:center; color:#145A32;'><b>{row['Akademisyen İndeks Puanı']:.2f}</b></td>"
                         html_puan += "</tr>"
                         row_count += 1
                     html_puan += "</table>"
-
+                    
                     html_abd_puanlari = ""
-                    abd_listesi = sorted(puan_tablosu["Kayıt olunan Anabilim dalı"].dropna().unique())
                     for abd in abd_listesi:
-                        temp_abd = puan_tablosu[puan_tablosu["Kayıt olunan Anabilim dalı"] == abd].copy()
+                        temp_abd = puan_tablosu[puan_tablosu["Danışmanın Gerçek ABD"] == abd].copy()
                         temp_abd.sort_values("Akademisyen İndeks Puanı", ascending=False, inplace=True)
-                        html_abd_puanlari += f"<h3>📌 {abd} Anabilim Dalı Atama Sıralaması</h3>"
+                        html_abd_puanlari += f"<h3>📌 {abd} Atama Sıralaması</h3>"
                         html_abd_puanlari += "<table class='mystyle' style='width:100%; border-collapse: collapse; font-size:11px; margin-top:5px; margin-bottom:15px;'>"
                         html_abd_puanlari += "<tr><th style='background-color: #34495E; color: white; padding: 6px; text-align:left;'>Danışman Adı ve Soyadı</th><th style='background-color: #34495E; color: white; padding: 6px; text-align:center;'>Lisansüstü İndeks Puanı</th><th style='background-color: #34495E; color: white; padding: 6px; text-align:center;'>Kişisel İndeks Puanı</th><th style='background-color: #34495E; color: white; padding: 6px; text-align:center;'>Akademisyen İndeks Puanı</th></tr>"
                         r_count = 0
@@ -515,57 +404,18 @@ else:
                     <style>
                         body {{ font-family: Helvetica, sans-serif; color: #333; font-size: 11px; line-height: 1.4; }}
                         h1 {{ text-align: center; color: #2C3E50; font-size: 16px; margin-bottom: 2px; }}
-                        h4 {{ text-align: center; color: #7F8C8D; font-size: 12px; margin-top: 0px; margin-bottom: 15px; font-weight: normal; }}
                         h2 {{ color: #2980B9; border-bottom: 1px solid #2980B9; font-size: 14px; padding-bottom: 3px; margin-top: 20px; }}
-                        h3 {{ color: #34495E; font-size: 12px; margin-top: 10px; margin-bottom: 5px; }}
                         .mystyle {{ border-collapse: collapse; width: 100%; margin-top: 5px; font-size: 11px; }}
                         .mystyle th {{ background-color: #34495E; color: white; padding: 6px; border: 1px solid #34495E; }}
                         .mystyle td {{ border: 1px solid #ddd; padding: 6px; }}
                     </style></head>
                     <body>
                         <h1>TURİZM ARAŞTIRMALARI ENSTİTÜSÜ</h1>
-                        <h4>Bütünleşik Akademik Performans Detaylı Raporu</h4>
-
-                        <h2>BÖLÜM 1: GENEL DURUM (TÜM PROGRAMLAR)</h2>
-                        {html_genel_ozet}
-
-                        <pdf:nextpage />
-                        <h2>BÖLÜM 2: YÜKSEK LİSANS ÖZEL RAPORU</h2>
-                        <h3>📌 Anabilim Dalı Yüksek Lisans Başarı Dağılımı</h3>
-                        {yl_ad_html}
-                        <h3>🏆 Yüksek Lisans Programında En Başarılı Danışmanlar (İlk 10)</h3>
-                        {yl_hoca_html}
-
-                        <pdf:nextpage />
-                        <h2>BÖLÜM 3: DOKTORA ÖZEL RAPORU</h2>
-                        <h3>📌 Anabilim Dalı Doktora Başarı Dağılımı</h3>
-                        {dr_ad_html}
-                        <h3>🏆 Doktora Programında En Başarılı Danışmanlar (İlk 10)</h3>
-                        {dr_hoca_html}
-                        
-                        <pdf:nextpage />
-                        <h2>BÖLÜM 4: TÜM DANIŞMANLARIN DETAYLI LİSTESİ</h2>
-                        <h3>📌 Yüksek Lisans Danışmanlık ve Eser Çıktıları</h3>
-                        {html_yl_tam_liste}
-                        
-                        <h3>📌 Doktora Danışmanlık ve Eser Çıktıları</h3>
-                        {html_dr_tam_liste}
-                        
-                        <pdf:nextpage />
-                        <h2>BÖLÜM 5: BÜTÜNLEŞİK AKADEMİSYEN İNDEKS TABLOSU (ENSTİTÜ GENELİ)</h2>
-                        <p style="font-size:10px; color:#555; margin-bottom:5px;"><i>* <b>Lisansüstü İndeks:</b> Danışmanın yürüttüğü tezlerden çıkarttığı yayınların puanıdır.<br>
-                        * <b>Kişisel İndeks:</b> Danışmanın tezlerden bağımsız kendi akademik yayınlarının (NEVÜ EK-1 katsayılarıyla) puanıdır.<br>
-                        * Her iki indeks puanı birleştirilerek nihai <b>Akademisyen İndeks Puanı</b> oluşturulmuştur.</i></p>
+                        <h2>BÖLÜM 1: BÜTÜNLEŞİK AKADEMİSYEN İNDEKS TABLOSU (Enstitü Geneli)</h2>
                         {html_puan}
-
                         <pdf:nextpage />
-                        <h2>BÖLÜM 6: ANABİLİM DALI ÖZELİNDE İNDEKS SIRALAMALARI (BÖLÜM İÇİ REKABET)</h2>
-                        <p style="font-size:10px; color:#555; margin-bottom:5px;"><i>* <b>Bölüm İçi İndeks:</b> Bu bölümde her danışmanın performansı, sadece <b>kendi Anabilim Dalı</b> içerisindeki diğer danışmanlarla kıyaslanabilecek şekilde listelenmiştir.</i></p>
+                        <h2>BÖLÜM 2: ANABİLİM DALI ÖZELİNDE İNDEKS SIRALAMALARI (Bölüm İçi)</h2>
                         {html_abd_puanlari}
-
-                        <div style="margin-top:30px; text-align:center; color:#7f8c8d; font-size:10px;">
-                            <i>Bu resmi rapor Bütünleşik Performans Takip Sistemi tarafından otomatik olarak oluşturulmuştur.</i>
-                        </div>
                     </body></html>
                     """
 
@@ -574,9 +424,9 @@ else:
 
                     col_pdf1, col_pdf2 = st.columns(2)
                     with col_pdf1:
-                        st.download_button(label="📥 DİREKT İNDİR: PDF Olarak İndir", data=result_pdf.getvalue(), file_name="Enstitu_Detayli_Rapor.pdf", mime="application/pdf", use_container_width=True)
+                        st.download_button(label="📥 PDF Olarak İndir", data=result_pdf.getvalue(), file_name="Enstitu_Detayli_Rapor.pdf", mime="application/pdf", use_container_width=True)
                     with col_pdf2:
-                        st.download_button(label="🌐 ALTERNATİF İNDİR: HTML Olarak İndir", data=rapor_html, file_name="Enstitu_Detayli_Rapor.html", mime="text/html", use_container_width=True)
+                        st.download_button(label="🌐 HTML Olarak İndir", data=rapor_html, file_name="Enstitu_Detayli_Rapor.html", mime="text/html", use_container_width=True)
 
     except Exception as e:
         st.error(f"⚠️ Kritik Hata Oluştu: {e}")
