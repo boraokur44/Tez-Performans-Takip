@@ -8,7 +8,7 @@ import io
 import time 
 
 # --- SAYFA AYARLARI ---
-st.set_page_config(page_title="Doktora Süreç Takip", layout="wide")
+st.set_page_config(page_title="Tez Performans Takip", layout="wide")
 
 # --- GÜVENLİK VE GİRİŞ EKRANI (LOGIN) ---
 if "giris_yapildi" not in st.session_state:
